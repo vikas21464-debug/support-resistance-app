@@ -5,50 +5,40 @@ import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
 
-st.set_page_config(page_title="Support & Resistance (AB Formula)", layout="wide")
+st.set_page_config(
+    page_title="Support & Resistance (AB Formula)",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
-# Force light look (also set in .streamlit/config.toml)
+# Force a clean light look with dark, readable text everywhere
 st.markdown(
     """
     <style>
-    .stApp, [data-testid="stSidebar"] { background-color: #ffffff; color: #111111; }
+    [data-testid="stSidebar"], [data-testid="collapsedControl"] { display: none; }
+    .stApp, [data-testid="stHeader"] { background-color: #ffffff; }
+    .stApp h1, .stApp h2, .stApp h3, .stApp p, .stApp label, .stApp li,
+    .stApp [data-testid="stMarkdownContainer"], .stApp [data-testid="stWidgetLabel"] *,
+    .stApp [data-testid="stMetricLabel"] *, .stApp [data-testid="stMetricValue"] *,
+    .stApp [data-testid="stCaptionContainer"], .stApp summary, .stApp summary * {
+        color: #111111 !important;
+    }
+    .stApp input, .stApp [data-baseweb="select"] > div, .stApp [data-baseweb="input"] {
+        background-color: #f3f4f6 !important; color: #111111 !important;
+    }
+    .stApp [data-baseweb="select"] * { color: #111111 !important; }
+    div[data-baseweb="popover"] li, div[data-baseweb="popover"] ul {
+        background-color: #ffffff !important; color: #111111 !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 st.title("📈 Support & Resistance – AB Formula")
-st.caption(
-    "Levels are set on the 1st trading day of every month from the previous "
-    "month's closing price. Pick any month to see its levels on the daily chart."
-)
-
-# ---------------------------------------------------------------- sidebar
-with st.sidebar:
-    st.header("Inputs")
-    symbol = st.text_input(
-        "Yahoo Finance symbol",
-        value="^NSEI",
-        help="Examples: RELIANCE.NS, TCS.NS, ^NSEI (Nifty 50), ^NSEBANK, "
-        "^BSESN, AAPL. For Indian mutual funds use the Yahoo code, e.g. 0P0000XVAA.BO",
-    ).strip()
-    years_history = st.slider("Years of history to load", 1, 15, 5)
-    context_months = st.slider(
-        "Months shown before the selected month", 0, 12, 2,
-        help="Extra candles shown to the left of the selected month for context.",
-    )
-    pi_value = st.number_input(
-        "First divisor", min_value=0.01, value=3.14, step=0.01, format="%.2f",
-        help="Previous month close is first divided by this (default 3.14).",
-    )
-    divisor = st.number_input(
-        "Second divisor", min_value=1.0, value=10.0, step=1.0,
-        help="The result is then divided by this (default 10).",
-    )
-    show_labels = st.checkbox("Show level labels", value=True)
 
 
-# ---------------------------------------------------------------- data
+# ---------------------------------------------------------------- data helpers
 @st.cache_data(ttl=3600, show_spinner="Downloading price data…")
 def load_data(sym: str, start: dt.date) -> pd.DataFrame:
     df = yf.download(sym, start=start, auto_adjust=False, progress=False)
@@ -79,6 +69,25 @@ def compute_monthly_levels(df: pd.DataFrame, pi_value: float, divisor: float) ->
     return out
 
 
+# ---------------------------------------------------------------- menu (top of page)
+m1, m2, m3 = st.columns([2, 1, 1])
+symbol = m1.text_input(
+    "Stock / Index / Mutual fund symbol",
+    value="^NSEI",
+    help="Yahoo Finance symbol. Examples: RELIANCE.NS, TCS.NS, ^NSEI, ^NSEBANK, "
+    "^BSESN, AAPL. Mutual funds: Yahoo code such as 0P0000XVAA.BO",
+).strip()
+years_history = m2.selectbox("History to load", [1, 2, 3, 5, 10, 15], index=3,
+                             format_func=lambda y: f"{y} year{'s' if y > 1 else ''}")
+context_months = m3.selectbox("Months before selected month", [0, 1, 2, 3, 6, 12], index=2)
+
+with st.expander("Formula settings"):
+    f1, f2 = st.columns(2)
+    pi_value = f1.number_input("First divisor", min_value=0.01, value=3.14,
+                               step=0.01, format="%.2f")
+    divisor = f2.number_input("Second divisor", min_value=1.0, value=10.0, step=1.0)
+    show_labels = st.checkbox("Show price labels on lines", value=True)
+
 if not symbol:
     st.stop()
 
@@ -95,25 +104,19 @@ if levels.empty:
     st.warning("Not enough history to compute levels.")
     st.stop()
 
-# ---------------------------------------------------------------- month picker
 month_labels = [p.strftime("%B %Y") for p in levels.index]  # oldest -> newest
-with st.sidebar:
-    selected_label = st.selectbox(
-        "Select month",
-        options=month_labels[::-1],  # newest first
-        index=0,
-        help="Horizontal lines on the chart are drawn for this month.",
-    )
+selected_label = st.selectbox(
+    "Select month (lines on the chart follow this month)",
+    options=month_labels[::-1],  # newest first
+    index=0,
+)
 sel_period = levels.index[month_labels.index(selected_label)]
 sel = levels.loc[sel_period]
 
-# chart window: context months before the selected month start, up to its end
-# (or the latest available bar if the selected month is the current one)
 win_start = sel["start"] - pd.DateOffset(months=context_months)
-win_end = sel["end"]
-view = data[(data.index >= win_start) & (data.index <= win_end)]
+view = data[(data.index >= win_start) & (data.index <= sel["end"])]
 
-# ---------------------------------------------------------------- chart
+# ---------------------------------------------------------------- chart (price + S/R lines only)
 fig = go.Figure()
 has_ohlc = {"Open", "High", "Low"}.issubset(view.columns) and view["High"].notna().any()
 if has_ohlc:
@@ -122,17 +125,15 @@ if has_ohlc:
             x=view.index, open=view["Open"], high=view["High"],
             low=view["Low"], close=view["Close"], name="Price",
             increasing_line_color="#2ca02c", decreasing_line_color="#d62728",
+            showlegend=False,
         )
     )
 else:  # mutual funds usually only have NAV
-    fig.add_trace(go.Scatter(x=view.index, y=view["Close"], name="Close", mode="lines"))
+    fig.add_trace(go.Scatter(x=view.index, y=view["Close"], mode="lines",
+                             line=dict(color="#1f77b4"), showlegend=False))
 
 COLORS = {"R": "#d62728", "S": "#2ca02c"}
-DASH = {1: "solid", 2: "dash", 3: "dot"}
 x0, x1 = view.index.min(), view.index.max()
-
-# faint marker where the selected month begins
-fig.add_vline(x=sel["start"], line_width=1, line_dash="dot", line_color="#888888")
 
 for kind in ("R", "S"):
     for i in (1, 2, 3):
@@ -140,34 +141,25 @@ for kind in ("R", "S"):
         y = sel[name]
         fig.add_shape(
             type="line", x0=x0, x1=x1, y0=y, y1=y,
-            line=dict(color=COLORS[kind], width=1.6, dash=DASH[i]),
+            line=dict(color=COLORS[kind], width=1.6),
         )
         if show_labels:
             fig.add_annotation(
                 x=x1, y=y, text=f"{name}: {y:,.2f}", showarrow=False,
-                xanchor="left", font=dict(color=COLORS[kind], size=11),
+                xanchor="left", font=dict(color=COLORS[kind], size=12),
             )
-# previous close reference line
-fig.add_shape(
-    type="line", x0=x0, x1=x1, y0=sel["prev_close"], y1=sel["prev_close"],
-    line=dict(color="#555555", width=1, dash="longdash"),
-)
-if show_labels:
-    fig.add_annotation(
-        x=x1, y=sel["prev_close"], text=f"Prev Close: {sel['prev_close']:,.2f}",
-        showarrow=False, xanchor="left", font=dict(color="#555555", size=11),
-    )
 
 fig.update_layout(
     template="plotly_white",
     paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
+    font=dict(color="#111111"),
     height=700, xaxis_rangeslider_visible=False,
-    margin=dict(l=10, r=130, t=40, b=10), legend=dict(orientation="h"),
+    margin=dict(l=10, r=130, t=40, b=10),
     title=f"{symbol} – Daily chart | Levels for {selected_label}",
 )
 st.plotly_chart(fig, use_container_width=True)
 
-# ---------------------------------------------------------------- tables
+# ---------------------------------------------------------------- level table
 last_price = view["Close"].iloc[-1]
 st.subheader(f"Levels for {selected_label} (from {sel['start']:%d %b %Y})")
 c1, c2, c3 = st.columns(3)
@@ -177,9 +169,8 @@ c3.metric(f"Close on {view.index[-1]:%d %b %Y}", f"{last_price:,.2f}")
 
 lv = pd.DataFrame(
     {
-        "Level": ["R3", "R2", "R1", "Prev Close", "S1", "S2", "S3"],
-        "Price": [sel["R3"], sel["R2"], sel["R1"], sel["prev_close"],
-                  sel["S1"], sel["S2"], sel["S3"]],
+        "Level": ["R3", "R2", "R1", "S1", "S2", "S3"],
+        "Price": [sel["R3"], sel["R2"], sel["R1"], sel["S1"], sel["S2"], sel["S3"]],
     }
 )
 lv["Distance from last price %"] = (lv["Price"] / last_price - 1) * 100
@@ -187,12 +178,6 @@ st.dataframe(
     lv.style.format({"Price": "{:,.2f}", "Distance from last price %": "{:+.2f}%"}),
     hide_index=True, use_container_width=True,
 )
-
-with st.expander("Monthly level history"):
-    hist = levels.drop(columns=["end"]).copy()
-    hist.index = hist.index.strftime("%b %Y")
-    hist["start"] = hist["start"].dt.date
-    st.dataframe(hist.round(2).iloc[::-1], use_container_width=True)
 
 with st.expander("Formula"):
     st.markdown(
