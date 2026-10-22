@@ -97,11 +97,40 @@ if not symbol:
 
 today = dt.date.today()
 start = (pd.Timestamp(today) - pd.DateOffset(years=years_history)).date()
-data = load_data(symbol, start)
+ALIASES = {
+    "NIFTY": "^NSEI", "NIFTY50": "^NSEI", "NIFTY 50": "^NSEI",
+    "BANKNIFTY": "^NSEBANK", "NIFTY BANK": "^NSEBANK",
+    "SENSEX": "^BSESN", "NIFTYIT": "^CNXIT", "NIFTY IT": "^CNXIT",
+}
+
+
+def candidate_symbols(raw: str) -> list:
+    s = raw.strip().upper()
+    if s in ALIASES:
+        return [ALIASES[s]]
+    # already a full Yahoo symbol (suffix, index, future, or fund code)
+    if "." in s or s.startswith("^") or "=" in s or s[:1].isdigit():
+        return [s]
+    # plain Indian stock name: try NSE, then BSE, then as typed (US etc.)
+    return [f"{s}.NS", f"{s}.BO", s]
+
+
+data = pd.DataFrame()
+used_symbol = symbol
+for cand in candidate_symbols(symbol):
+    data = load_data(cand, start)
+    if not data.empty:
+        used_symbol = cand
+        break
 
 if data.empty:
-    st.error(f"No data found for '{symbol}'. Check the Yahoo Finance symbol.")
+    st.error(
+        f"No data found for '{symbol}'. Try the exact Yahoo Finance symbol, "
+        "e.g. BHEL.NS, RELIANCE.NS, ^NSEI."
+    )
     st.stop()
+
+symbol = used_symbol
 
 levels = compute_monthly_levels(data, pi_value, divisor)
 if levels.empty:
