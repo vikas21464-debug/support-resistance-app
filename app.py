@@ -74,16 +74,59 @@ def compute_monthly_levels(df: pd.DataFrame, pi_value: float, divisor: float) ->
 
 
 # ---------------------------------------------------------------- menu (top of page)
-m1, m2, m3 = st.columns([2, 1, 1])
-symbol = m1.text_input(
-    "Stock / Index / Mutual fund symbol",
-    value="^NSEI",
-    help="Yahoo Finance symbol. Examples: RELIANCE.NS, TCS.NS, ^NSEI, ^NSEBANK, "
-    "^BSESN, AAPL. Mutual funds: Yahoo code such as 0P0000XVAA.BO",
+INDICES = {
+    "— Select an index —": "",
+    # India
+    "Nifty 50": "^NSEI",
+    "Nifty Bank": "^NSEBANK",
+    "Sensex": "^BSESN",
+    "Nifty Next 50": "^NSMIDCP",
+    "Nifty 100": "^CNX100",
+    "Nifty 200": "^CNX200",
+    "Nifty 500": "^CRSLDX",
+    "Nifty Midcap 50": "^NSEMDCP50",
+    "Nifty Smallcap 100": "^CNXSC",
+    "Nifty Financial Services": "^CNXFIN",
+    "Nifty IT": "^CNXIT",
+    "Nifty Auto": "^CNXAUTO",
+    "Nifty Pharma": "^CNXPHARMA",
+    "Nifty FMCG": "^CNXFMCG",
+    "Nifty Metal": "^CNXMETAL",
+    "Nifty Realty": "^CNXREALTY",
+    "Nifty Energy": "^CNXENERGY",
+    "Nifty Media": "^CNXMEDIA",
+    "Nifty PSU Bank": "^CNXPSUBANK",
+    "Nifty Infrastructure": "^CNXINFRA",
+    "Nifty Commodities": "^CNXCMDT",
+    "India VIX": "^INDIAVIX",
+    # Global
+    "S&P 500": "^GSPC",
+    "Dow Jones": "^DJI",
+    "Nasdaq Composite": "^IXIC",
+    "FTSE 100": "^FTSE",
+    "DAX": "^GDAXI",
+    "Nikkei 225": "^N225",
+    "Hang Seng": "^HSI",
+}
+
+m1, m2, m3, m4 = st.columns([1.5, 1.5, 1, 1])
+typed_symbol = m1.text_input(
+    "Stock / Mutual fund symbol",
+    value="",
+    placeholder="e.g. RELIANCE, BHEL, TCS",
+    help="Yahoo Finance symbol. Examples: RELIANCE.NS, TCS.NS, AAPL. "
+    "Mutual funds: Yahoo code such as 0P0000XVAA.BO",
 ).strip()
-years_history = m2.selectbox("History to load", [1, 2, 3, 5, 10, 15], index=3,
+index_name = m2.selectbox(
+    "Or choose an index", list(INDICES.keys()), index=0,
+    help="Picking an index here overrides the symbol box.",
+)
+years_history = m3.selectbox("History to load", [1, 2, 3, 5, 10, 15], index=3,
                              format_func=lambda y: f"{y} year{'s' if y > 1 else ''}")
-context_months = m3.selectbox("Months before selected month", [0, 1, 2, 3, 6, 12], index=2)
+context_months = m4.selectbox("Months before selected", [0, 1, 2, 3, 6, 12], index=2)
+
+# index dropdown wins; else typed symbol; else default Nifty 50
+symbol = INDICES[index_name] or typed_symbol or "^NSEI"
 
 with st.expander("Formula settings"):
     f1, f2 = st.columns(2)
