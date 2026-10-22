@@ -35,7 +35,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("📈 Support & Resistance – AB Formula")
+st.title("📈 Support & Resistance")
+st.caption(
+    "Monthly support and resistance levels (R1–R3, S1–S3) drawn on the daily chart "
+    "of any stock, index or mutual fund. Developed by Vikas Dhiman."
+)
 
 
 # ---------------------------------------------------------------- data helpers
@@ -156,6 +160,18 @@ fig.update_layout(
     height=700, xaxis_rangeslider_visible=False,
     margin=dict(l=10, r=130, t=40, b=10),
     title=f"{symbol} – Daily chart | Levels for {selected_label}",
+    hovermode="x",
+)
+# remove every extra line (grid, axis, zero and spike lines); keep only S/R lines
+fig.update_xaxes(
+    showgrid=False, zeroline=False, showline=False, showspikes=False,
+    tickfont=dict(color="#000000", size=13, family="Arial Black, Arial, sans-serif"),
+    tickformat="%d %b %Y",
+    ticks="",
+)
+fig.update_yaxes(
+    showgrid=False, zeroline=False, showline=False, showspikes=False,
+    tickfont=dict(color="#000000", size=12),
 )
 st.plotly_chart(fig, use_container_width=True)
 
