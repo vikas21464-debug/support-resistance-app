@@ -1,4 +1,5 @@
 import datetime as dt
+import html
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -175,6 +176,68 @@ if data.empty:
 
 symbol = used_symbol
 
+
+# ---------------------------------------------------------------- name + logo header
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_profile(sym: str) -> dict:
+    try:
+        info = yf.Ticker(sym).info or {}
+    except Exception:
+        info = {}
+    return {
+        "name": info.get("longName") or info.get("shortName") or "",
+        "type": info.get("quoteType", ""),
+        "exchange": info.get("fullExchangeName") or info.get("exchange") or "",
+        "website": info.get("website", ""),
+        "logo_url": info.get("logo_url", ""),
+    }
+
+
+def logo_for(profile: dict) -> str:
+    if profile["logo_url"]:
+        return profile["logo_url"]
+    site = profile["website"]
+    if site:
+        domain = site.replace("https://", "").replace("http://", "").split("/")[0]
+        return f"https://www.google.com/s2/favicons?domain={domain}&sz=128"
+    return ""
+
+
+profile = get_profile(symbol)
+display_name = (
+    index_name if INDICES.get(index_name) == symbol and index_name != "— Select an index —"
+    else profile["name"] or symbol
+)
+kind = {"EQUITY": "Stock", "INDEX": "Index", "MUTUALFUND": "Mutual Fund",
+        "ETF": "ETF"}.get(profile["type"], "Index" if symbol.startswith("^") else "")
+sub = " • ".join(x for x in [symbol, kind, profile["exchange"]] if x)
+logo = logo_for(profile)
+initials = html.escape((display_name.strip()[:2] or symbol[:2]).upper())
+if logo:
+    badge = (
+        f'<img src="{html.escape(logo)}" width="56" height="56" '
+        f'style="border-radius:10px;border:1px solid #e5e7eb;background:#fff;'
+        f'object-fit:contain;padding:4px;">'
+    )
+else:
+    badge = (
+        f'<div style="width:56px;height:56px;border-radius:10px;background:#1f77b4;'
+        f'color:#fff;display:flex;align-items:center;justify-content:center;'
+        f'font-weight:700;font-size:20px;">{initials}</div>'
+    )
+st.markdown(
+    f"""
+    <div style="display:flex;align-items:center;gap:14px;margin:8px 0 4px 0;">
+      {badge}
+      <div>
+        <div style="font-size:24px;font-weight:700;color:#111111;">{html.escape(display_name)}</div>
+        <div style="font-size:14px;color:#444444;">{html.escape(sub)}</div>
+      </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 levels = compute_monthly_levels(data, pi_value, divisor)
 if levels.empty:
     st.warning("Not enough history to compute levels.")
@@ -231,7 +294,7 @@ fig.update_layout(
     font=dict(color="#111111"),
     height=700, xaxis_rangeslider_visible=False,
     margin=dict(l=10, r=130, t=40, b=10),
-    title=f"{symbol} – Daily chart | Levels for {selected_label}",
+    title=f"{display_name} ({symbol}) – Daily chart | Levels for {selected_label}",
     hovermode="x",
 )
 # remove every extra line (grid, axis, zero and spike lines); keep only S/R lines
